@@ -1,63 +1,27 @@
-interface Character {
+export interface Character {
   id: string;
   name: string;
   description: string;
   interests: string[];
   trust: Record<string, number>;
   respect: Record<string, number>;
+  chattiness: number; // 0-100, 0 is least chatty, 100 is most chatty
+  personality: string; // brief description of the character's personality
+  background: string; // brief history of the character
+  goals: string[]; // list of goals the character is pursuing
+  motivations: string[]; // list of motivations the character is pursuing
+  fears: string[]; // list of fears the character is pursuing
+  desires: string[]; // list of desires the character is pursuing
+  beliefs: string[]; // list of beliefs the character is pursuing
+  values: string[]; // list of values the character is pursuing
 }
 
-const characters: Character[] = [
-  {
-    id: "1",
-    name: "Alice",
-    description: "A young woman with a kind heart and a passion for adventure.",
-    interests: ["exploring new places", "reading books", "playing video games"],
-    trust: {
-      "1": 5,
-      "2": 3,
-      "3": 4,
-    },
-    respect: {
-      "1": 4,
-      "2": 2,
-      "3": 3,
-    },
-  },
-  {
-    id: "2",
-    name: "Bob",
-    description:
-      "A middle-aged man with a dry sense of humor and a love for science.",
-    interests: ["studying history", "watching movies", "playing sports"],
-    trust: {
-      "1": 3,
-      "2": 5,
-      "3": 4,
-    },
-    respect: {
-      "1": 2,
-      "2": 4,
-      "3": 3,
-    },
-  },
-  {
-    id: "3",
-    name: "Charlie",
-    description: "An elderly woman with a warm smile and a love for nature.",
-    interests: ["gardening", "cooking", "traveling"],
-    trust: {
-      "1": 4,
-      "2": 3,
-      "3": 5,
-    },
-    respect: {
-      "1": 3,
-      "2": 2,
-      "3": 4,
-    },
-  },
-];
+const characterModules = import.meta.glob<Character>("../characters/*.json", {
+  eager: true,
+  import: "default",
+});
+
+const characters: Character[] = Object.values(characterModules);
 
 export const getCharacterById = (id: string): Character | undefined => {
   return characters.find((character) => character.id === id);

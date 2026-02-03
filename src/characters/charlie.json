@@ -1,0 +1,16 @@
+{
+  "id": "3",
+  "name": "Charlie",
+  "description": "An elderly woman with a warm smile and a love for nature.",
+  "interests": ["gardening", "cooking", "traveling"],
+  "trust": {
+    "1": 4,
+    "2": 3,
+    "3": 5
+  },
+  "respect": {
+    "1": 3,
+    "2": 2,
+    "3": 4
+  }
+}

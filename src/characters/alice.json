@@ -1,0 +1,16 @@
+{
+  "id": "1",
+  "name": "Alice",
+  "description": "A young woman with a kind heart and a passion for adventure.",
+  "interests": ["exploring new places", "reading books", "playing video games"],
+  "trust": {
+    "1": 5,
+    "2": 3,
+    "3": 4
+  },
+  "respect": {
+    "1": 4,
+    "2": 2,
+    "3": 3
+  }
+}
