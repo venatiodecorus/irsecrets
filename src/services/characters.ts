@@ -1,19 +1,39 @@
+export interface TrustThreshold {
+  max: number;
+  behavior: string;
+}
+
+export type TrustTier = "cold" | "cautious" | "warm" | "trusted";
+
+export type Mood = "neutral" | "annoyed" | "suspicious" | "friendly" | "hostile";
+
 export interface Character {
   id: string;
   name: string;
+  handle: string;
   description: string;
+  personality: string;
+
   interests: string[];
-  trust: Record<string, number>;
-  respect: Record<string, number>;
-  chattiness: number; // 0-100, 0 is least chatty, 100 is most chatty
-  personality: string; // brief description of the character's personality
-  background: string; // brief history of the character
-  goals: string[]; // list of goals the character is pursuing
-  motivations: string[]; // list of motivations the character is pursuing
-  fears: string[]; // list of fears the character is pursuing
-  desires: string[]; // list of desires the character is pursuing
-  beliefs: string[]; // list of beliefs the character is pursuing
-  values: string[]; // list of values the character is pursuing
+  expertise: string[];
+  boundaries: string[];
+
+  secrets: string[];
+  knownInsights: Record<string, string>;
+
+  chattiness: number;
+  patience: number;
+  openness: number;
+
+  trustThresholds: Record<TrustTier, TrustThreshold>;
+
+  initialTrust: number;
+}
+
+export interface CharacterState {
+  trust: number;
+  mood: Mood;
+  irritation: number;
 }
 
 const characterModules = import.meta.glob<Character>("../characters/*.json", {
@@ -23,38 +43,112 @@ const characterModules = import.meta.glob<Character>("../characters/*.json", {
 
 const characters: Character[] = Object.values(characterModules);
 
-export const getCharacterById = (id: string): Character | undefined => {
-  return characters.find((character) => character.id === id);
-};
+const stateMap = new Map<string, CharacterState>();
 
-export const getAllCharacters = (): Character[] => {
+export function initializeState(): void {
+  stateMap.clear();
+  for (const character of characters) {
+    stateMap.set(character.id, {
+      trust: character.initialTrust,
+      mood: "neutral",
+      irritation: 0,
+    });
+  }
+}
+
+// Initialize on module load
+initializeState();
+
+export function getAllCharacters(): Character[] {
   return characters;
-};
+}
 
-export const updateCharacter = (
+export function getCharacterById(id: string): Character | undefined {
+  return characters.find((c) => c.id === id);
+}
+
+export function getCharacterByHandle(handle: string): Character | undefined {
+  return characters.find((c) => c.handle === handle);
+}
+
+export function getCharacterState(id: string): CharacterState | undefined {
+  return stateMap.get(id);
+}
+
+export function getTrustTier(id: string): TrustTier {
+  const state = stateMap.get(id);
+  if (!state) return "cold";
+
+  const trust = state.trust;
+  if (trust <= 2) return "cold";
+  if (trust <= 5) return "cautious";
+  if (trust <= 7) return "warm";
+  return "trusted";
+}
+
+export function updateTrust(id: string, delta: number): number | undefined {
+  const state = stateMap.get(id);
+  if (!state) return undefined;
+
+  state.trust = Math.max(0, Math.min(10, state.trust + delta));
+  return state.trust;
+}
+
+export function updateMood(id: string, mood: Mood): void {
+  const state = stateMap.get(id);
+  if (!state) return;
+
+  state.mood = mood;
+}
+
+export function updateIrritation(
   id: string,
-  updatedCharacter: Partial<Character>,
-): Character | undefined => {
-  const index = characters.findIndex((character) => character.id === id);
-  if (index === -1) return undefined;
+  delta: number,
+): number | undefined {
+  const state = stateMap.get(id);
+  if (!state) return undefined;
 
-  characters[index] = { ...characters[index], ...updatedCharacter };
-  return characters[index];
-};
+  state.irritation = Math.max(0, Math.min(10, state.irritation + delta));
 
-export const deleteCharacter = (id: string): boolean => {
-  const index = characters.findIndex((character) => character.id === id);
-  if (index === -1) return false;
+  // Auto-update mood based on irritation thresholds
+  if (state.irritation >= 9) {
+    state.mood = "hostile";
+  } else if (state.irritation >= 7) {
+    state.mood = "annoyed";
+  } else if (state.irritation >= 5) {
+    state.mood = "suspicious";
+  } else if (state.irritation < 4 && state.mood !== "friendly") {
+    state.mood = "neutral";
+  }
 
-  characters.splice(index, 1);
-  return true;
-};
+  return state.irritation;
+}
 
-export const createCharacter = (
-  newCharacter: Omit<Character, "id">,
-): Character => {
-  const id = crypto.randomUUID();
-  const character = { id, ...newCharacter };
-  characters.push(character);
-  return character;
-};
+export function canDM(id: string): boolean {
+  const state = stateMap.get(id);
+  if (!state) return false;
+  return state.trust >= 3;
+}
+
+export interface CharacterDebugInfo {
+  handle: string;
+  trust: number;
+  trustTier: TrustTier;
+  mood: Mood;
+  irritation: number;
+  canDM: boolean;
+}
+
+export function getAllCharacterDebugInfo(): CharacterDebugInfo[] {
+  return characters.map((c) => {
+    const state = stateMap.get(c.id);
+    return {
+      handle: c.handle,
+      trust: state?.trust ?? 0,
+      trustTier: getTrustTier(c.id),
+      mood: state?.mood ?? "neutral",
+      irritation: state?.irritation ?? 0,
+      canDM: canDM(c.id),
+    };
+  });
+}

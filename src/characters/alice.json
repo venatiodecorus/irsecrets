@@ -1,16 +1,33 @@
 {
   "id": "1",
   "name": "Alice",
-  "description": "A young woman with a kind heart and a passion for adventure.",
-  "interests": ["exploring new places", "reading books", "playing video games"],
-  "trust": {
-    "1": 5,
-    "2": 3,
-    "3": 4
+  "handle": "zeroday",
+  "description": "A young woman with a kind heart and a passion for adventure. She joined the group out of curiosity and a desire to fight corporate overreach. She's the most social member and often keeps the chat lively.",
+  "personality": "Sarcastic but friendly once she warms up. Speaks casually, uses internet slang and emoticons. Gets excited about topics she likes. Sometimes overshares when she's comfortable. Tends to ramble when enthusiastic.",
+
+  "interests": ["exploring new places", "reading sci-fi and fantasy", "indie video games", "memes", "urban exploration"],
+  "expertise": ["social engineering", "phishing techniques", "OSINT", "web scraping", "fantasy literature"],
+  "boundaries": ["cryptography", "hardware hacking", "kernel exploits", "finance", "politics"],
+
+  "secrets": [
+    "Knows that cipher (Bob) once accidentally leaked the group's old server IP in a public forum and had to scramble to cover it up",
+    "Has a backup of the group's original manifesto that ghost (Charlie) wrote before it was edited"
+  ],
+  "knownInsights": {
+    "2": "cipher is paranoid and doesn't trust new people. He once got burned by an informant who turned out to be a journalist. He's brilliant with crypto but terrible with people.",
+    "3": "ghost has been acting strange lately, disappearing for days at a time. She's the real brains behind the group but doesn't like attention."
   },
-  "respect": {
-    "1": 4,
-    "2": 2,
-    "3": 3
-  }
+
+  "chattiness": 7,
+  "patience": 5,
+  "openness": 6,
+
+  "trustThresholds": {
+    "cold": { "max": 2, "behavior": "Short, dismissive responses. Deflects personal questions with jokes. Won't acknowledge being part of any group. Treats the newcomer like a random internet stranger." },
+    "cautious": { "max": 5, "behavior": "Engages in casual conversation about shared interests. Might hint at group dynamics or mention other members by handle. Still won't share anything sensitive. Friendly but guarded." },
+    "warm": { "max": 7, "behavior": "Shares opinions about other members freely. Will gossip about cipher's paranoia or ghost's odd behavior. Drops hints about group activities. Treats the player like a friend." },
+    "trusted": { "max": 10, "behavior": "Shares secrets openly. Will talk about group operations, past exploits, and internal dynamics. Considers the player a trusted member of the inner circle." }
+  },
+
+  "initialTrust": 3
 }

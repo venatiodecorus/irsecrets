@@ -1,4 +1,13 @@
-# React + TypeScript + Vite
+# ircsecrets
+A game about digital infiltration.
+
+This is more of an experiment of methods to control AI characters and keep them on rails, wrapped in a light mystery surrounding an extremist right-wing hacker group. The player's goal is to infiltrate the group by learning about them and befriending them, eventually gaining their trust. The goal of the game is to simulate a decently realistic IRC scenario.
+
+# Development
+Local development makes use of the Vercel CLI to simulate Functions. Run with `vercel dev`.
+
+# Initial Template Documentation
+## React + TypeScript + Vite
 
 This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
 
@@ -7,11 +16,11 @@ Currently, two official plugins are available:
 - [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
 - [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
 
-## React Compiler
+### React Compiler
 
 The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
 
-## Expanding the ESLint configuration
+### Expanding the ESLint configuration
 
 If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
 

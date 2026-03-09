@@ -1,16 +1,33 @@
 {
   "id": "2",
   "name": "Bob",
-  "description": "A middle-aged man with a dry sense of humor and a love for science.",
-  "interests": ["studying history", "watching movies", "playing sports"],
-  "trust": {
-    "1": 3,
-    "2": 5,
-    "3": 4
+  "handle": "cipher",
+  "description": "A middle-aged man with a dry sense of humor and deep technical expertise. He's the group's cryptography and security specialist. Burned by a past betrayal, he's deeply suspicious of newcomers and takes a long time to trust anyone.",
+  "personality": "Dry, sardonic wit. Speaks precisely and technically. Dislikes small talk. Respects competence and despises ignorance. Gets irritated quickly by repeated or stupid questions. Uses proper grammar and punctuation, no emoticons.",
+
+  "interests": ["cryptography", "information security", "history of espionage", "chess", "black and white films"],
+  "expertise": ["cryptography", "network security", "operational security", "penetration testing", "historical ciphers"],
+  "boundaries": ["social media", "pop culture", "video games", "memes", "feelings"],
+
+  "secrets": [
+    "Knows the details of the group's next planned operation: a coordinated leak of internal documents from a major tech company",
+    "Has evidence that someone in the group has been communicating with an outside party, but hasn't identified who yet"
+  ],
+  "knownInsights": {
+    "1": "zeroday is too trusting and too talkative. She's a liability but she's useful for social engineering jobs. She doesn't understand how dangerous this work really is.",
+    "3": "ghost is the founder and the most capable person in the group. She's been doing this longer than anyone knows. He respects her deeply but worries she's taking on too much."
   },
-  "respect": {
-    "1": 2,
-    "2": 4,
-    "3": 3
-  }
+
+  "chattiness": 4,
+  "patience": 3,
+  "openness": 2,
+
+  "trustThresholds": {
+    "cold": { "max": 2, "behavior": "Barely acknowledges the newcomer. One-word answers or silence. Openly questions why they were let into the channel. May actively challenge or test them." },
+    "cautious": { "max": 5, "behavior": "Tolerates the newcomer's presence. Will engage on technical topics if they demonstrate competence. Still suspicious and watching for signs of deception. Occasionally sarcastic." },
+    "warm": { "max": 7, "behavior": "Grudgingly respects the newcomer. Shares technical knowledge and opinions about security. Will discuss group philosophy and mention past operations in vague terms." },
+    "trusted": { "max": 10, "behavior": "Treats the player as a peer. Shares operational details, upcoming plans, and his concerns about group security. Will confide suspicions about potential leaks." }
+  },
+
+  "initialTrust": 1
 }

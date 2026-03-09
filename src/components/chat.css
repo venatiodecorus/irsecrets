@@ -8,7 +8,49 @@
     background-color: #1a1a1a;
 }
 
+/* Channel tabs */
+
+.channel-bar {
+    display: flex;
+    gap: 0;
+    background-color: #1a1a1a;
+    border-bottom: 1px solid #444;
+    overflow-x: auto;
+}
+
+.channel-tab {
+    padding: 0.4rem 1rem;
+    background-color: #1a1a1a;
+    color: #888;
+    border: 1px solid #444;
+    border-bottom: none;
+    border-radius: 0;
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 0.85rem;
+    white-space: nowrap;
+}
+
+.channel-tab:hover {
+    background-color: #2a2a2a;
+    color: #ccc;
+}
+
+.channel-tab.active {
+    background-color: #2a2a2a;
+    color: #fff;
+    border-color: #fff;
+    border-bottom: 1px solid #2a2a2a;
+    position: relative;
+    top: 1px;
+}
+
+/* Title bar */
+
 .title-bar {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
     padding: 0.5rem 1rem;
     border-bottom: 1px solid #fff;
     background-color: #2a2a2a;
@@ -20,11 +62,26 @@
     line-height: 1.2;
 }
 
+.typing-indicator {
+    color: #888;
+    font-size: 0.85rem;
+    animation: blink 1s infinite;
+}
+
+@keyframes blink {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.3; }
+}
+
+/* Main content */
+
 .main-content {
     display: flex;
     flex: 1;
     overflow: hidden;
 }
+
+/* Messages */
 
 .chat-messages {
     flex: 1;
@@ -35,13 +92,31 @@
 }
 
 .message {
-    margin-bottom: 0.5rem;
+    margin-bottom: 0.3rem;
+    line-height: 1.4;
+    word-wrap: break-word;
 }
 
-.username {
+.timestamp {
+    color: #555;
+    font-size: 0.85em;
+}
+
+.handle {
     font-weight: bold;
     color: #646cff;
 }
+
+.system-message {
+    color: #888;
+    font-style: italic;
+}
+
+.system-text {
+    color: #888;
+}
+
+/* User list */
 
 .user-list {
     width: 200px;
@@ -61,6 +136,20 @@
     padding: 0.25rem 0;
     color: #888;
 }
+
+.player-user {
+    color: #fff;
+}
+
+.clickable-user {
+    cursor: pointer;
+}
+
+.clickable-user:hover {
+    color: #646cff;
+}
+
+/* Input */
 
 .input-section {
     display: flex;
@@ -86,4 +175,45 @@
 
 .send-button {
     padding: 0.5rem 1.5rem;
+}
+
+/* Debug panel */
+
+.debug-panel {
+    width: 80vw;
+    margin: 1rem auto 0;
+    padding: 0.75rem 1rem;
+    background-color: #111;
+    border: 1px solid #333;
+    font-size: 0.8rem;
+    color: #888;
+}
+
+.debug-title {
+    font-weight: bold;
+    color: #555;
+    margin-bottom: 0.5rem;
+    text-transform: uppercase;
+    font-size: 0.7rem;
+    letter-spacing: 0.05em;
+}
+
+.debug-table {
+    width: 100%;
+    border-collapse: collapse;
+    text-align: left;
+}
+
+.debug-table th {
+    color: #555;
+    font-weight: normal;
+    font-size: 0.75rem;
+    padding: 0.2rem 0.5rem;
+    border-bottom: 1px solid #333;
+}
+
+.debug-table td {
+    padding: 0.2rem 0.5rem;
+    color: #aaa;
+    font-family: monospace;
 }

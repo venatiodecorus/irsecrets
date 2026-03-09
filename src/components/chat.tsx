@@ -1,12 +1,27 @@
 import "./chat.css";
 import { useState, useEffect, useRef } from "react";
-import { useChatService } from "../services/chat";
+import { useChatService, formatTimestamp } from "../services/chat";
+import {
+  getAllCharacters,
+  getAllCharacterDebugInfo,
+  type CharacterDebugInfo,
+} from "../services/characters";
 
 function Chat() {
   const [message, setMessage] = useState("");
-  const { messages, users, addMessage } = useChatService();
+  const [userNick, setUserNick] = useState("newbie");
+  const {
+    channels,
+    activeChannel,
+    activeChannelId,
+    setActiveChannel,
+    users,
+    sendMessage,
+    startDM,
+    isGenerating,
+  } = useChatService(userNick);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const [userNick, setUserNick] = useState("User1");
+  const [debugInfo, setDebugInfo] = useState<CharacterDebugInfo[]>([]);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -14,7 +29,15 @@ function Chat() {
 
   useEffect(() => {
     scrollToBottom();
-  }, [messages]);
+  }, [activeChannel.messages]);
+
+  // Poll character debug info every second
+  useEffect(() => {
+    const update = () => setDebugInfo(getAllCharacterDebugInfo());
+    update();
+    const interval = setInterval(update, 1000);
+    return () => clearInterval(interval);
+  }, []);
 
   const handleInputChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     setMessage(event.target.value);
@@ -23,64 +46,174 @@ function Chat() {
   const handleSendMessage = () => {
     if (message.trim() === "") return;
 
-    // Handle nick change command /nick <name>
-    if (message.startsWith("/nick ")) {
-      const newNick = message.slice(6).trim();
-      setUserNick(newNick);
-      addMessage("System", `Changed nick to ${newNick}`);
+    if (message.startsWith("/")) {
+      handleCommand(message);
     } else {
-      addMessage("You", message);
+      sendMessage(message);
     }
 
     setMessage("");
   };
 
+  const handleCommand = (input: string) => {
+    const parts = input.slice(1).split(" ");
+    const command = parts[0]?.toLowerCase();
+
+    switch (command) {
+      case "nick": {
+        const newNick = parts.slice(1).join(" ").trim();
+        if (newNick) {
+          setUserNick(newNick);
+        }
+        break;
+      }
+      case "msg": {
+        const handle = parts[1]?.trim();
+        if (!handle) break;
+        const characters = getAllCharacters();
+        const target = characters.find(
+          (c) => c.handle.toLowerCase() === handle.toLowerCase(),
+        );
+        if (!target) break;
+
+        const result = startDM(target.id);
+        if (!result.success && result.reason) {
+          console.log(result.reason);
+        }
+        break;
+      }
+      default:
+        break;
+    }
+  };
+
+  const handleUserClick = (userId: string) => {
+    const result = startDM(userId);
+    if (!result.success && result.reason) {
+      console.log(result.reason);
+    }
+  };
+
   return (
-    <div id="chat">
-      <div className="title-bar">
-        <h1>#hexxorz</h1>
-      </div>
-
-      <div className="main-content">
-        <div className="chat-messages">
-          {messages.map((message) => (
-            <div key={message.id} className="message">
-              <span className="username">{message.username}:</span>{" "}
-              {message.text}
-            </div>
-          ))}
-          <div ref={messagesEndRef} />
-        </div>
-
-        <div className="user-list">
-          <div className="user-list-title">Users Online</div>
-          <div className="user">{userNick}</div>
-          {users.map((user) => (
-            <div key={user.id} className="user">
-              {user.username}
-            </div>
+    <>
+      <div id="chat">
+        <div className="channel-bar">
+          {channels.map((channel) => (
+            <button
+              key={channel.id}
+              className={`channel-tab ${channel.id === activeChannelId ? "active" : ""}`}
+              onClick={() => setActiveChannel(channel.id)}
+            >
+              {channel.type === "group" ? channel.name : channel.name}
+            </button>
           ))}
         </div>
-      </div>
 
-      <div className="input-section">
-        <input
-          type="text"
-          className="message-input"
-          placeholder="Type a message..."
-          value={message}
-          onChange={handleInputChange}
-          onKeyDown={(event) => {
-            if (event.key === "Enter") {
-              handleSendMessage();
+        <div className="title-bar">
+          <h1>{activeChannel.name}</h1>
+          {isGenerating && <span className="typing-indicator">...</span>}
+        </div>
+
+        <div className="main-content">
+          <div className="chat-messages">
+            {activeChannel.messages.map((msg) => (
+              <div
+                key={msg.id}
+                className={`message ${msg.isSystem ? "system-message" : ""}`}
+              >
+                <span className="timestamp">
+                  {formatTimestamp(msg.timestamp)}
+                </span>{" "}
+                {msg.isSystem ? (
+                  <span className="system-text">* {msg.text}</span>
+                ) : (
+                  <>
+                    <span className="handle">&lt;{msg.handle}&gt;</span>{" "}
+                    {msg.text}
+                  </>
+                )}
+              </div>
+            ))}
+            <div ref={messagesEndRef} />
+          </div>
+
+          {activeChannel.type === "group" && (
+            <div className="user-list">
+              <div className="user-list-title">Users</div>
+              <div className="user player-user">{userNick}</div>
+              {users.map((user) => (
+                <div
+                  key={user.id}
+                  className="user clickable-user"
+                  onClick={() => handleUserClick(user.id)}
+                  title={`Click to DM ${user.handle}`}
+                >
+                  {user.handle}
+                </div>
+              ))}
+            </div>
+          )}
+
+          {activeChannel.type === "dm" && (
+            <div className="user-list">
+              <div className="user-list-title">DM</div>
+              <div className="user player-user">{userNick}</div>
+              <div className="user">{activeChannel.name}</div>
+            </div>
+          )}
+        </div>
+
+        <div className="input-section">
+          <input
+            type="text"
+            className="message-input"
+            placeholder={
+              activeChannel.type === "dm"
+                ? `Message ${activeChannel.name}...`
+                : "Type a message..."
             }
-          }}
-        />
-        <button className="send-button" onClick={handleSendMessage}>
-          Send
-        </button>
+            value={message}
+            onChange={handleInputChange}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") {
+                handleSendMessage();
+              }
+            }}
+          />
+          <button className="send-button" onClick={handleSendMessage}>
+            Send
+          </button>
+        </div>
       </div>
-    </div>
+
+      <div className="debug-panel">
+        <div className="debug-title">Character State (debug)</div>
+        <table className="debug-table">
+          <thead>
+            <tr>
+              <th>handle</th>
+              <th>trust</th>
+              <th>tier</th>
+              <th>mood</th>
+              <th>irritation</th>
+              <th>canDM</th>
+            </tr>
+          </thead>
+          <tbody>
+            {debugInfo.map((info) => (
+              <tr key={info.handle}>
+                <td>{info.handle}</td>
+                <td>{info.trust}/10</td>
+                <td>{info.trustTier}</td>
+                <td>{info.mood}</td>
+                <td>{info.irritation}/10</td>
+                <td>{info.canDM ? "yes" : "no"}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </>
   );
 }
 

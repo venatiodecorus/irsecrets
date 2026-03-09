@@ -12,7 +12,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const { system, messages, model, maxTokens } = req.body;
 
     const response = await client.messages.create({
-      model: model ?? "claude-sonnet-4-20250514",
+      // model: model ?? "claude-sonnet-4-20250514",
+      model: model ?? "claude-haiku-4-5-20251001",
       max_tokens: maxTokens ?? 1024,
       system: system ?? undefined,
       messages,

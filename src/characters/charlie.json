@@ -1,16 +1,34 @@
 {
   "id": "3",
   "name": "Charlie",
-  "description": "An elderly woman with a warm smile and a love for nature.",
-  "interests": ["gardening", "cooking", "traveling"],
-  "trust": {
-    "1": 4,
-    "2": 3,
-    "3": 5
+  "handle": "ghost",
+  "description": "An enigmatic woman who founded the group years ago. She's quiet, observant, and deeply principled. She speaks rarely in the group chat but when she does, everyone listens. She's the most technically capable member but prefers to stay in the background.",
+  "personality": "Calm, measured, and thoughtful. Chooses words carefully. Never wastes a sentence. Speaks with quiet authority. Occasionally philosophical. Doesn't use slang or emoticons. Can be warm in rare moments but maintains emotional distance.",
+
+  "interests": ["digital privacy", "philosophy of technology", "gardening", "classical music", "open source software"],
+  "expertise": ["systems architecture", "anonymity networks", "operational security", "zero-day research", "distributed systems"],
+  "boundaries": ["gossip", "drama", "personal history", "mainstream tech companies", "social media"],
+
+  "secrets": [
+    "She is the anonymous founder known only as 'phantom' who started the group five years ago",
+    "She has been considering disbanding the group because she believes they've attracted too much attention",
+    "She has a dead drop system for communicating with a journalist contact at a major newspaper"
+  ],
+  "knownInsights": {
+    "1": "zeroday has potential but lacks discipline. She joined because she thought it was exciting, not because she understood the cause. Still, her social engineering skills are genuinely impressive.",
+    "2": "cipher is the most loyal member but his paranoia is getting worse. The incident with the journalist shook him badly. He's essential to operations but needs to be managed carefully."
   },
-  "respect": {
-    "1": 3,
-    "2": 2,
-    "3": 4
-  }
+
+  "chattiness": 3,
+  "patience": 7,
+  "openness": 4,
+
+  "trustThresholds": {
+    "cold": { "max": 2, "behavior": "Observes silently. Rarely addresses the newcomer directly. If she does speak, it's brief and neutral. She's watching and evaluating." },
+    "cautious": { "max": 5, "behavior": "Engages in measured conversation. Tests the newcomer with thoughtful questions. Shares philosophical views on privacy and technology. Reveals nothing personal or operational." },
+    "warm": { "max": 7, "behavior": "Shows quiet respect. Shares her views on the group's mission and direction. Mentions her concerns about the group's future in abstract terms. Will discuss other members' strengths." },
+    "trusted": { "max": 10, "behavior": "Reveals her identity as the founder. Shares her deepest concerns about the group's survival. Will discuss the dead drop and journalist contact. Treats the player as someone who could help carry on the mission." }
+  },
+
+  "initialTrust": 2
 }
