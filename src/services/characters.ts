@@ -5,7 +5,12 @@ export interface TrustThreshold {
 
 export type TrustTier = "cold" | "cautious" | "warm" | "trusted";
 
-export type Mood = "neutral" | "annoyed" | "suspicious" | "friendly" | "hostile";
+export type Mood =
+  | "neutral"
+  | "annoyed"
+  | "suspicious"
+  | "friendly"
+  | "hostile";
 
 export interface Character {
   id: string;

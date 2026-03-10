@@ -8,4 +8,7 @@ Planning document for finishing the game.
 - [ ] Win state - Define explicit win state, specific secret that should be uncovered.
 
 ## UI
-- [ ] Tab completion of character names
+- [x] Tab completion of character names
+
+## Story
+- [ ] Add right-wing hacker group story (simple for now, potentially will develop the narrative)

@@ -9,7 +9,7 @@ import {
 
 function Chat() {
   const [message, setMessage] = useState("");
-  const [userNick, setUserNick] = useState("newbie");
+  const [userNick, setUserNick] = useState("infil");
   const {
     channels,
     activeChannel,
@@ -21,6 +21,13 @@ function Chat() {
     isGenerating,
   } = useChatService(userNick);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const tabState = useRef<{
+    prefix: string;
+    matches: string[];
+    index: number;
+    wordStart: number;
+  } | null>(null);
   const [debugInfo, setDebugInfo] = useState<CharacterDebugInfo[]>([]);
 
   const scrollToBottom = () => {
@@ -40,7 +47,72 @@ function Chat() {
   }, []);
 
   const handleInputChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    tabState.current = null;
     setMessage(event.target.value);
+  };
+
+  const handleKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
+    if (event.key === "Enter") {
+      handleSendMessage();
+      return;
+    }
+
+    if (event.key === "Tab") {
+      event.preventDefault();
+
+      const input = inputRef.current;
+      if (!input) return;
+
+      const cursorPos = input.selectionStart ?? message.length;
+
+      if (tabState.current === null) {
+        // First Tab press — find the word fragment before cursor
+        const textBeforeCursor = message.slice(0, cursorPos);
+        const lastSpaceIdx = textBeforeCursor.lastIndexOf(" ");
+        const wordStart = lastSpaceIdx + 1;
+        const prefix = textBeforeCursor.slice(wordStart);
+
+        if (prefix.length === 0) return;
+
+        const characters = getAllCharacters();
+        const matches = characters
+          .map((c) => c.handle)
+          .filter((h) => h.toLowerCase().startsWith(prefix.toLowerCase()));
+
+        if (matches.length === 0) return;
+
+        tabState.current = { prefix, matches, index: 0, wordStart };
+
+        const completed = matches[0] + " ";
+        const newMessage =
+          message.slice(0, wordStart) + completed + message.slice(cursorPos);
+        const newCursorPos = wordStart + completed.length;
+
+        setMessage(newMessage);
+        setTimeout(
+          () => input.setSelectionRange(newCursorPos, newCursorPos),
+          0,
+        );
+      } else {
+        // Subsequent Tab press — cycle to the next match
+        const state = tabState.current;
+        state.index = (state.index + 1) % state.matches.length;
+
+        const completed = state.matches[state.index] + " ";
+        // The previous completion occupies from wordStart to cursorPos
+        const newMessage =
+          message.slice(0, state.wordStart) +
+          completed +
+          message.slice(cursorPos);
+        const newCursorPos = state.wordStart + completed.length;
+
+        setMessage(newMessage);
+        setTimeout(
+          () => input.setSelectionRange(newCursorPos, newCursorPos),
+          0,
+        );
+      }
+    }
   };
 
   const handleSendMessage = () => {
@@ -165,6 +237,7 @@ function Chat() {
 
         <div className="input-section">
           <input
+            ref={inputRef}
             type="text"
             className="message-input"
             placeholder={
@@ -174,11 +247,7 @@ function Chat() {
             }
             value={message}
             onChange={handleInputChange}
-            onKeyDown={(event) => {
-              if (event.key === "Enter") {
-                handleSendMessage();
-              }
-            }}
+            onKeyDown={handleKeyDown}
           />
           <button className="send-button" onClick={handleSendMessage}>
             Send
