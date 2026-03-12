@@ -19,6 +19,8 @@ function Chat() {
     sendMessage,
     startDM,
     isGenerating,
+    gameOver,
+    gameOverMessage,
   } = useChatService(userNick);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -236,22 +238,28 @@ function Chat() {
         </div>
 
         <div className="input-section">
-          <input
-            ref={inputRef}
-            type="text"
-            className="message-input"
-            placeholder={
-              activeChannel.type === "dm"
-                ? `Message ${activeChannel.name}...`
-                : "Type a message..."
-            }
-            value={message}
-            onChange={handleInputChange}
-            onKeyDown={handleKeyDown}
-          />
-          <button className="send-button" onClick={handleSendMessage}>
-            Send
-          </button>
+          {gameOver ? (
+            <div className="game-over-message">{gameOverMessage}</div>
+          ) : (
+            <>
+              <input
+                ref={inputRef}
+                type="text"
+                className="message-input"
+                placeholder={
+                  activeChannel.type === "dm"
+                    ? `Message ${activeChannel.name}...`
+                    : "Type a message..."
+                }
+                value={message}
+                onChange={handleInputChange}
+                onKeyDown={handleKeyDown}
+              />
+              <button className="send-button" onClick={handleSendMessage}>
+                Send
+              </button>
+            </>
+          )}
         </div>
       </div>
 

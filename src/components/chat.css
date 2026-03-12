@@ -177,6 +177,16 @@
     padding: 0.5rem 1.5rem;
 }
 
+/* Game over */
+
+.game-over-message {
+    flex: 1;
+    padding: 0.5rem;
+    color: #ff4444;
+    font-weight: bold;
+    text-align: center;
+}
+
 /* Debug panel */
 
 .debug-panel {

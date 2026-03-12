@@ -3,13 +3,23 @@ import {
   getAllCharacters,
   getCharacterById,
   getCharacterState,
+  updateTrust,
+  updateIrritation,
+  updateMood,
+  isGameOver,
   canDM,
   type Character,
+  type Mood,
 } from "./characters";
 import {
   buildSystemPrompt,
   buildGroupChatContext,
-  buildDMContext,
+  buildAssessmentPrompt,
+  buildAssessmentUserMessage,
+  buildCombinedResponsePrompt,
+  buildCombinedResponseUserMessage,
+  type AssessmentResult,
+  type CharacterAssessment,
 } from "./characterPrompt";
 import { ClaudeService, type ClaudeMessage } from "./claude";
 
@@ -62,21 +72,28 @@ const RESPONSE_STAGGER_MAX_MS = 6000;
 // Max lines per response
 const MAX_RESPONSE_LINES = 2;
 
-// Max tokens — keep very low for short IRC-style messages
-const CHAT_MAX_TOKENS = 100;
+// Max tokens for different call types
+const IDLE_CHAT_MAX_TOKENS = 100;
+const ASSESSMENT_MAX_TOKENS = 300;
+const COMBINED_RESPONSE_MAX_TOKENS = 250;
 
-// Consecutive speaker limit
+// Consecutive speaker limit (idle chatter only)
 const MAX_CONSECUTIVE_SPEAKS = 2;
 
-// --- Claude client ---
+// History window cap
+const MAX_HISTORY_MESSAGES = 50;
 
-const claude = new ClaudeService({ maxTokens: CHAT_MAX_TOKENS });
+// --- Claude clients ---
+
+const idleClaude = new ClaudeService({ maxTokens: IDLE_CHAT_MAX_TOKENS });
+const assessmentClaude = new ClaudeService({ maxTokens: ASSESSMENT_MAX_TOKENS });
+const responseClaude = new ClaudeService({ maxTokens: COMBINED_RESPONSE_MAX_TOKENS });
 
 // --- Module-level state ---
 
 const channelHistory = new Map<string, ClaudeMessage[]>();
 
-// Track consecutive speakers for group chat
+// Track consecutive speakers for group chat idle chatter
 let lastGroupSpeaker: string | null = null;
 let consecutiveSpeakCount = 0;
 
@@ -109,9 +126,25 @@ function appendToHistory(
   } else {
     history.push({ role, content });
   }
+
+  // Trim history to cap
+  trimHistory(channelId);
 }
 
-// --- Character selection ---
+function trimHistory(channelId: string): void {
+  const history = getHistory(channelId);
+  if (history.length > MAX_HISTORY_MESSAGES) {
+    const excess = history.length - MAX_HISTORY_MESSAGES;
+    history.splice(0, excess);
+  }
+}
+
+function getHistoryAsText(channelId: string): string {
+  const history = getHistory(channelId);
+  return history.map((m) => m.content).join("\n");
+}
+
+// --- Character selection (idle chatter only) ---
 
 function pickCharacterToSpeak(characters: Character[]): Character | null {
   // Weight by chattiness — higher chattiness = more likely to be picked
@@ -142,40 +175,6 @@ function pickCharacterToSpeak(characters: Character[]): Character | null {
   return picked;
 }
 
-function pickRespondingCharacters(
-  characters: Character[],
-  speakerHandle: string,
-  messageText: string,
-): Character[] {
-  const candidates = characters.filter((c) => c.handle !== speakerHandle);
-
-  const scored = candidates.map((c) => {
-    let score = c.chattiness + c.openness;
-    // Boost if mentioned by handle
-    if (messageText.toLowerCase().includes(c.handle.toLowerCase())) {
-      score += 20;
-    }
-    // Add some randomness
-    score += Math.random() * 5;
-    return { character: c, score };
-  });
-
-  scored.sort((a, b) => b.score - a.score);
-
-  // Pick 0-2 responders probabilistically
-  // Chance of nobody responding at all
-  const responders: Character[] = [];
-  for (const { character, score } of scored) {
-    const chance = Math.min(0.6, score / 30);
-    if (Math.random() < chance) {
-      responders.push(character);
-      if (responders.length >= 2) break;
-    }
-  }
-
-  return responders;
-}
-
 function getNextInterval(): number {
   const now = Date.now();
   const timeSinceBurst = now - lastBurstTimestamp;
@@ -201,26 +200,21 @@ function splitResponse(text: string): string[] {
   return lines.slice(0, MAX_RESPONSE_LINES);
 }
 
-// --- Generate a message from a character ---
+// --- Generate a message from a character (idle chatter only) ---
 
 async function generateCharacterMessage(
   character: Character,
   channelId: string,
-  context: "group" | "dm",
-  playerHandle: string,
 ): Promise<string[]> {
   const state = getCharacterState(character.id);
   if (!state) return [];
 
-  const systemPrompt = buildSystemPrompt(character, state, context);
-  claude.setSystemPrompt(systemPrompt);
+  const systemPrompt = buildSystemPrompt(character, state, "group");
+  idleClaude.setSystemPrompt(systemPrompt);
 
   const history = getHistory(channelId);
 
-  const contextMessage =
-    context === "group"
-      ? buildGroupChatContext(character.handle)
-      : buildDMContext(character.handle, playerHandle);
+  const contextMessage = buildGroupChatContext(character.handle);
 
   const messages: ClaudeMessage[] =
     history.length > 0
@@ -243,11 +237,209 @@ async function generateCharacterMessage(
         ];
 
   try {
-    const response = await claude.sendMessage(messages);
+    const response = await idleClaude.sendMessage(messages);
     return splitResponse(response);
   } catch (err) {
     console.error(`Failed to generate message for ${character.handle}:`, err);
     return [];
+  }
+}
+
+// --- Assessment ---
+
+function parseAssessmentResponse(
+  responseText: string,
+  characters: Character[],
+): AssessmentResult | null {
+  try {
+    // Strip markdown code fences if present
+    let cleaned = responseText.trim();
+    if (cleaned.startsWith("```")) {
+      cleaned = cleaned.replace(/^```(?:json)?\n?/, "").replace(/\n?```$/, "");
+    }
+
+    const parsed = JSON.parse(cleaned) as AssessmentResult;
+
+    // Validate structure — ensure all character handles are present
+    const result: AssessmentResult = {};
+    for (const character of characters) {
+      const entry = parsed[character.handle];
+      if (entry && typeof entry === "object") {
+        result[character.handle] = {
+          shouldRespond: Boolean(entry.shouldRespond),
+          trustDelta: clampNumber(entry.trustDelta, -1, 1),
+          irritationDelta: clampNumber(entry.irritationDelta, -1, 3),
+          moodOverride: isValidMood(entry.moodOverride) ? entry.moodOverride : null,
+        };
+      } else {
+        // Default: no response, no state change
+        result[character.handle] = {
+          shouldRespond: false,
+          trustDelta: 0,
+          irritationDelta: 0,
+          moodOverride: null,
+        };
+      }
+    }
+
+    return result;
+  } catch (err) {
+    console.error("Failed to parse assessment response:", err);
+    return null;
+  }
+}
+
+function clampNumber(value: unknown, min: number, max: number): number {
+  if (typeof value !== "number" || isNaN(value)) return 0;
+  return Math.max(min, Math.min(max, value));
+}
+
+const VALID_MOODS: Mood[] = ["neutral", "annoyed", "suspicious", "friendly", "hostile"];
+
+function isValidMood(value: unknown): value is Mood {
+  return typeof value === "string" && VALID_MOODS.includes(value as Mood);
+}
+
+async function assessPlayerMessage(
+  playerMessage: string,
+  channelId: string,
+  playerHandle: string,
+  context: "group" | "dm",
+  targetCharacters: Character[],
+): Promise<{ responders: Character[]; gameOverHandle?: string }> {
+  const historyText = getHistoryAsText(channelId);
+
+  const systemPrompt = buildAssessmentPrompt(targetCharacters, context);
+  assessmentClaude.setSystemPrompt(systemPrompt);
+
+  const userMessage = buildAssessmentUserMessage(
+    historyText,
+    playerMessage,
+    playerHandle,
+  );
+
+  let assessment: AssessmentResult | null = null;
+
+  try {
+    const responseText = await assessmentClaude.sendMessage([
+      { role: "user", content: userMessage },
+    ]);
+    assessment = parseAssessmentResponse(responseText, targetCharacters);
+  } catch (err) {
+    console.error("Assessment call failed:", err);
+  }
+
+  // Apply state updates
+  const responders: Character[] = [];
+
+  if (assessment) {
+    for (const character of targetCharacters) {
+      const entry = assessment[character.handle];
+      if (!entry) continue;
+
+      applyAssessment(character, entry);
+
+      // Check game over after each state update
+      const gameOverInfo = isGameOver();
+      if (gameOverInfo.gameOver) {
+        return { responders: [], gameOverHandle: gameOverInfo.kickedBy };
+      }
+
+      if (entry.shouldRespond) {
+        responders.push(character);
+      }
+    }
+  } else {
+    // Fallback: if assessment failed, use simple heuristic
+    // At least one character responds in group, always respond in DM
+    if (context === "dm") {
+      responders.push(...targetCharacters);
+    } else {
+      // Pick the most chatty character as a fallback
+      const sorted = [...targetCharacters].sort(
+        (a, b) => b.chattiness - a.chattiness,
+      );
+      if (sorted.length > 0) {
+        responders.push(sorted[0]);
+      }
+    }
+  }
+
+  return { responders };
+}
+
+function applyAssessment(
+  character: Character,
+  entry: CharacterAssessment,
+): void {
+  if (entry.trustDelta !== 0) {
+    updateTrust(character.id, entry.trustDelta);
+  }
+  if (entry.irritationDelta !== 0) {
+    updateIrritation(character.id, entry.irritationDelta);
+  }
+  if (entry.moodOverride !== null) {
+    updateMood(character.id, entry.moodOverride);
+  }
+}
+
+// --- Combined response generation ---
+
+function parseCombinedResponse(
+  responseText: string,
+  characters: Character[],
+): Map<string, string[]> {
+  const result = new Map<string, string[]>();
+
+  try {
+    // Strip markdown code fences if present
+    let cleaned = responseText.trim();
+    if (cleaned.startsWith("```")) {
+      cleaned = cleaned.replace(/^```(?:json)?\n?/, "").replace(/\n?```$/, "");
+    }
+
+    const parsed = JSON.parse(cleaned) as Record<string, string>;
+
+    for (const character of characters) {
+      const text = parsed[character.handle];
+      if (typeof text === "string" && text.trim().length > 0) {
+        result.set(character.handle, splitResponse(text));
+      }
+    }
+  } catch (err) {
+    console.error("Failed to parse combined response:", err);
+  }
+
+  return result;
+}
+
+async function generateCombinedResponse(
+  characters: Character[],
+  channelId: string,
+  playerHandle: string,
+  context: "group" | "dm",
+): Promise<Map<string, string[]>> {
+  if (characters.length === 0) return new Map();
+
+  const historyText = getHistoryAsText(channelId);
+
+  const systemPrompt = buildCombinedResponsePrompt(characters, context);
+  responseClaude.setSystemPrompt(systemPrompt);
+
+  const userMessage = buildCombinedResponseUserMessage(
+    historyText,
+    playerHandle,
+    context,
+  );
+
+  try {
+    const responseText = await responseClaude.sendMessage([
+      { role: "user", content: userMessage },
+    ]);
+    return parseCombinedResponse(responseText, characters);
+  } catch (err) {
+    console.error("Combined response generation failed:", err);
+    return new Map();
   }
 }
 
@@ -257,7 +449,7 @@ function formatForHistory(handle: string, text: string): string {
   return `<${handle}> ${text}`;
 }
 
-// --- Delay helper ---
+// --- Delay helpers ---
 
 function delay(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
@@ -303,6 +495,8 @@ export function useChatService(playerHandle: string) {
   const [activeChannelId, setActiveChannelId] = useState(GROUP_CHANNEL_ID);
   const [users, setUsers] = useState<ChatUser[]>([]);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [gameOver, setGameOver] = useState(false);
+  const [gameOverMessage, setGameOverMessage] = useState("");
 
   // Refs so callbacks always see latest state
   const channelsRef = useRef(channels);
@@ -311,6 +505,8 @@ export function useChatService(playerHandle: string) {
   playerHandleRef.current = playerHandle;
   const isGeneratingRef = useRef(isGenerating);
   isGeneratingRef.current = isGenerating;
+  const gameOverRef = useRef(gameOver);
+  gameOverRef.current = gameOver;
 
   // Initialize users from characters
   useEffect(() => {
@@ -369,10 +565,26 @@ export function useChatService(playerHandle: string) {
     [addMessageToChannel],
   );
 
-  // Generate a group chat message from a random character
+  // Handle game over state
+  const triggerGameOver = useCallback(
+    (kickedBy: string) => {
+      setGameOver(true);
+      const msg = `${kickedBy} has kicked you from ${GROUP_CHANNEL_NAME}. Game over.`;
+      setGameOverMessage(msg);
+      addMessageToChannel(
+        GROUP_CHANNEL_ID,
+        "system",
+        `* ${kickedBy} sets mode: +b ${playerHandleRef.current}!*@* — You have been kicked from ${GROUP_CHANNEL_NAME}.`,
+        true,
+      );
+    },
+    [addMessageToChannel],
+  );
+
+  // Generate a group chat message from a random character (idle chatter)
   const generateGroupMessage = useCallback(async () => {
-    // Skip if we're currently handling a player message or already generating
-    if (isGeneratingRef.current || isHandlingPlayerMessage) return;
+    // Skip if game over, handling a player message, or already generating
+    if (gameOverRef.current || isGeneratingRef.current || isHandlingPlayerMessage) return;
 
     const characters = getAllCharacters();
     const speaker = pickCharacterToSpeak(characters);
@@ -385,8 +597,6 @@ export function useChatService(playerHandle: string) {
       const lines = await generateCharacterMessage(
         speaker,
         GROUP_CHANNEL_ID,
-        "group",
-        playerHandleRef.current,
       );
       if (lines.length > 0) {
         await addMultiLineMessages(GROUP_CHANNEL_ID, speaker.handle, lines);
@@ -419,6 +629,8 @@ export function useChatService(playerHandle: string) {
   // Send a player message
   const sendMessage = useCallback(
     async (text: string) => {
+      if (gameOverRef.current) return;
+
       const handle = playerHandleRef.current;
       const channelId = channelsRef.current.find(
         (ch) => ch.id === activeChannelId,
@@ -434,56 +646,103 @@ export function useChatService(playerHandle: string) {
       if (channel.type === "group") {
         // Suppress idle interval while we handle responses
         isHandlingPlayerMessage = true;
+        setIsGenerating(true);
 
-        const characters = getAllCharacters();
-        const responders = pickRespondingCharacters(characters, handle, text);
+        try {
+          // Step 1: Assess the player's message against all characters
+          const characters = getAllCharacters();
+          const { responders, gameOverHandle } = await assessPlayerMessage(
+            text,
+            GROUP_CHANNEL_ID,
+            handle,
+            "group",
+            characters,
+          );
 
-        for (const responder of responders) {
-          // Stagger between different responders
+          // Check for game over
+          if (gameOverHandle) {
+            triggerGameOver(gameOverHandle);
+            return;
+          }
+
+          if (responders.length === 0) {
+            return;
+          }
+
+          // Step 2: Generate combined responses
           await delay(responseStaggerDelay());
 
-          setIsGenerating(true);
-          try {
-            const lines = await generateCharacterMessage(
-              responder,
-              GROUP_CHANNEL_ID,
-              "group",
-              handle,
-            );
-            if (lines.length > 0) {
-              await addMultiLineMessages(
-                GROUP_CHANNEL_ID,
-                responder.handle,
-                lines,
-              );
-              // Update consecutive speaker tracking
-              lastGroupSpeaker = responder.handle;
-              consecutiveSpeakCount = 1;
-            }
-          } finally {
-            setIsGenerating(false);
-          }
-        }
+          const responses = await generateCombinedResponse(
+            responders,
+            GROUP_CHANNEL_ID,
+            handle,
+            "group",
+          );
 
-        // Mark burst activity and re-enable idle interval
-        lastBurstTimestamp = Date.now();
-        isHandlingPlayerMessage = false;
+          // Step 3: Add messages to chat with stagger delays
+          let isFirst = true;
+          for (const responder of responders) {
+            const lines = responses.get(responder.handle);
+            if (!lines || lines.length === 0) continue;
+
+            if (!isFirst) {
+              await delay(responseStaggerDelay());
+            }
+            isFirst = false;
+
+            await addMultiLineMessages(
+              GROUP_CHANNEL_ID,
+              responder.handle,
+              lines,
+            );
+
+            // Update consecutive speaker tracking
+            lastGroupSpeaker = responder.handle;
+            consecutiveSpeakCount = 1;
+          }
+        } finally {
+          setIsGenerating(false);
+          // Mark burst activity and re-enable idle interval
+          lastBurstTimestamp = Date.now();
+          isHandlingPlayerMessage = false;
+        }
       } else if (channel.type === "dm" && channel.characterId) {
         const character = getCharacterById(channel.characterId);
         if (!character) return;
 
-        // Small delay before DM response too
-        await delay(1500 + Math.random() * 2000);
-
         setIsGenerating(true);
+
         try {
-          const lines = await generateCharacterMessage(
-            character,
+          // Step 1: Assess the player's message for the DM character
+          const { responders, gameOverHandle } = await assessPlayerMessage(
+            text,
             channelId,
-            "dm",
             handle,
+            "dm",
+            [character],
           );
-          if (lines.length > 0) {
+
+          // Check for game over
+          if (gameOverHandle) {
+            triggerGameOver(gameOverHandle);
+            return;
+          }
+
+          if (responders.length === 0) return;
+
+          // Step 2: Generate response
+          await delay(1500 + Math.random() * 2000);
+
+          const responses = await generateCombinedResponse(
+            responders,
+            channelId,
+            handle,
+            "dm",
+          );
+
+          // Step 3: Add messages
+          const lines = responses.get(character.handle);
+          if (lines && lines.length > 0) {
             await addMultiLineMessages(channelId, character.handle, lines);
           }
         } finally {
@@ -491,7 +750,7 @@ export function useChatService(playerHandle: string) {
         }
       }
     },
-    [activeChannelId, addMessageToChannel, addMultiLineMessages],
+    [activeChannelId, addMessageToChannel, addMultiLineMessages, triggerGameOver],
   );
 
   // Start a DM with a character
@@ -542,5 +801,7 @@ export function useChatService(playerHandle: string) {
     sendMessage,
     startDM,
     isGenerating,
+    gameOver,
+    gameOverMessage,
   };
 }

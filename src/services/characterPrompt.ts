@@ -1,10 +1,22 @@
-import type { Character, CharacterState } from "./characters";
+import type { Character, CharacterState, Mood } from "./characters";
 import {
   getTrustTier,
   getAllCharacters,
+  getCharacterState,
 } from "./characters";
 
+// --- Types ---
+
 type PromptContext = "group" | "dm";
+
+export interface CharacterAssessment {
+  shouldRespond: boolean;
+  trustDelta: number;
+  irritationDelta: number;
+  moodOverride: Mood | null;
+}
+
+export type AssessmentResult = Record<string, CharacterAssessment>;
 
 export function buildSystemPrompt(
   character: Character,
@@ -176,4 +188,232 @@ export function buildDMContext(
   playerHandle: string,
 ): string {
   return `The following is your private DM conversation with "${playerHandle}". Messages are formatted as <handle> message. You are "${characterHandle}". Respond to the latest message.`;
+}
+
+// --- Assessment prompt ---
+
+export function buildAssessmentPrompt(
+  characters: Character[],
+  context: PromptContext,
+): string {
+  const parts: string[] = [];
+
+  parts.push(
+    "You are a game engine evaluating a player's message in an IRC hacktivist simulation. " +
+    "Assess how each character would react to the player's latest message. " +
+    "Return ONLY valid JSON, no markdown fences, no extra text.",
+  );
+
+  parts.push(
+    "For each character below, evaluate the player's message and determine:",
+  );
+  parts.push(
+    [
+      "- shouldRespond: Would this character reply? Consider their chattiness, current mood, irritation level, and whether the message is relevant to their interests. " +
+      "Characters with negative moods (annoyed, suspicious, hostile) are less likely to respond. " +
+      "Characters with high irritation are less likely to respond. " +
+      "If the player directly mentions or addresses a character by handle, that character should almost always respond. " +
+      (context === "group"
+        ? "In group chat, not everyone needs to respond. Usually 0-2 characters respond."
+        : "In DMs, the character should always respond (shouldRespond: true)."),
+      "- trustDelta: How much should trust change? Range: -1.0 to +1.0. " +
+      "Speaking positively about or relating to the character's interests: +0.25 to +0.5. " +
+      "Showing genuine knowledge or asking thoughtful questions about their expertise: +0.5 to +1.0. " +
+      "Speaking negatively about their interests: -0.5 to -1.0. " +
+      "Neutral or off-topic messages: 0. " +
+      "Trust changes should be small and incremental.",
+      "- irritationDelta: How much should irritation change? Range: -1.0 to +3.0. " +
+      "Messages about topics they enjoy: -0.5 to -1.0 (irritation recovery). " +
+      "Neutral or mildly off-topic messages: +0.25 to +0.5. " +
+      "Messages about topics in their boundaries (things they dislike): +1.0 to +1.5. " +
+      "Speaking negatively about their interests: +1.0 to +2.0. " +
+      "Directly probing for secrets when trust is low (cold/cautious tier): +2.0 to +3.0. " +
+      "Repetitive or spammy messages: +1.0 to +1.5. " +
+      "Consider the character's patience — low patience characters are more easily irritated.",
+      "- moodOverride: Set ONLY when there is a clear reason to shift mood. " +
+      "Use \"friendly\" when the player engages genuinely with interests and trust is cautious or higher. " +
+      "Use \"suspicious\" when the player asks probing or unusual questions. " +
+      "Use \"annoyed\" when the player is being disruptive. " +
+      "Use null to let the automatic mood system handle it (preferred in most cases).",
+    ].join("\n"),
+  );
+
+  // Character profiles
+  for (const character of characters) {
+    const state = getCharacterState(character.id);
+    if (!state) continue;
+    const tier = getTrustTier(character.id);
+
+    const profile = [
+      `CHARACTER: "${character.handle}"`,
+      `Interests: ${character.interests.join(", ")}`,
+      `Expertise: ${character.expertise.join(", ")}`,
+      `Boundaries (dislikes): ${character.boundaries.join(", ")}`,
+      `Secrets: ${character.secrets.join("; ")}`,
+      `Chattiness: ${character.chattiness}/10, Patience: ${character.patience}/10, Openness: ${character.openness}/10`,
+      `Current state — Trust: ${state.trust}/10 (${tier}), Mood: ${state.mood}, Irritation: ${state.irritation}/10`,
+    ];
+
+    parts.push(profile.join("\n"));
+  }
+
+  // Output format
+  const handles = characters.map((c) => `"${c.handle}"`).join(", ");
+  parts.push(
+    `Return a JSON object with keys: ${handles}. Each value must have: shouldRespond (boolean), trustDelta (number), irritationDelta (number), moodOverride (string or null). ` +
+    "Return ONLY the JSON object. No explanation, no markdown code fences.",
+  );
+
+  return parts.join("\n\n");
+}
+
+export function buildAssessmentUserMessage(
+  recentHistory: string,
+  playerMessage: string,
+  playerHandle: string,
+): string {
+  const parts: string[] = [];
+
+  if (recentHistory.length > 0) {
+    parts.push("Recent chat history:");
+    parts.push(recentHistory);
+    parts.push("");
+  }
+
+  parts.push(
+    `The player "${playerHandle}" just sent this message:`,
+  );
+  parts.push(`<${playerHandle}> ${playerMessage}`);
+  parts.push("");
+  parts.push("Evaluate this message for each character and return the JSON assessment.");
+
+  return parts.join("\n");
+}
+
+// --- Combined response prompt ---
+
+export function buildCombinedResponsePrompt(
+  characters: Character[],
+  context: PromptContext,
+): string {
+  const parts: string[] = [];
+
+  parts.push(
+    "You are generating IRC chat responses for multiple characters simultaneously. " +
+    "Each character has a distinct personality. Stay in character for each one. " +
+    "Return ONLY valid JSON, no markdown fences, no extra text.",
+  );
+
+  // Include each character's persona
+  for (const character of characters) {
+    const state = getCharacterState(character.id);
+    if (!state) continue;
+    const tier = getTrustTier(character.id);
+    const tierBehavior = character.trustThresholds[tier];
+
+    const otherCharacters = getAllCharacters().filter(
+      (c) => c.id !== character.id,
+    );
+
+    const persona = [
+      `CHARACTER: "${character.handle}" (${character.name})`,
+      `${character.description}`,
+      `Personality: ${character.personality}`,
+      `Interests: ${character.interests.join(", ")}`,
+      `Expertise: ${character.expertise.join(", ")}`,
+      `Boundaries: ${character.boundaries.join(", ")}`,
+      `Chattiness: ${character.chattiness}/10, Patience: ${character.patience}/10`,
+      `Current mood: ${state.mood}, Trust: ${state.trust}/10 (${tier}), Irritation: ${state.irritation}/10`,
+      `Behavior: ${tierBehavior.behavior}`,
+    ];
+
+    // Known insights at warm/trusted
+    if (tier === "warm" || tier === "trusted") {
+      const insights = Object.entries(character.knownInsights);
+      if (insights.length > 0) {
+        const insightLines = insights
+          .map(([charId, insight]) => {
+            const other = otherCharacters.find((c) => c.id === charId);
+            return other ? `About ${other.handle}: ${insight}` : null;
+          })
+          .filter(Boolean);
+        if (insightLines.length > 0) {
+          persona.push(`Known insights: ${insightLines.join(". ")}`);
+        }
+      }
+    }
+
+    // Secrets
+    if (tier === "trusted") {
+      persona.push(
+        `Secrets (may share if relevant): ${character.secrets.join("; ")}`,
+      );
+    } else {
+      persona.push(
+        `Has secrets but will NOT share at current trust level.`,
+      );
+    }
+
+    parts.push(persona.join("\n"));
+  }
+
+  // Format instructions
+  const formatRules = [
+    "RESPONSE FORMAT RULES:",
+    "- Each character's response must look like a REAL IRC message.",
+    "- Messages must be SHORT. Target 40-100 characters. MAXIMUM 300 characters.",
+    "- If a character has more to say, use newlines (\\n) to split into 2 separate short messages. Maximum 2 lines per character.",
+    "- Use lowercase. Abbreviations and internet slang are fine — adjust per personality.",
+    "- Do NOT include handles, prefixes, quotation marks, asterisks, or markdown.",
+    "- Do NOT break character or acknowledge being an AI.",
+    "- Do NOT be overly helpful or accommodating. Real IRC users are blunt.",
+    "- Characters with negative moods should respond with shorter, more curt messages.",
+    "- Characters with high irritation may be dismissive or hostile.",
+  ];
+
+  if (context === "group") {
+    formatRules.push(
+      "- Characters may respond to the player, respond to each other, or add their own thoughts.",
+    );
+  } else {
+    formatRules.push(
+      "- Respond directly to what the player said. Can be slightly more open in DMs.",
+    );
+  }
+
+  parts.push(formatRules.join("\n"));
+
+  // Output format
+  const handles = characters.map((c) => `"${c.handle}"`).join(", ");
+  parts.push(
+    `Return a JSON object with keys: ${handles}. Each value is a string containing that character's IRC message (use \\n for multi-line). ` +
+    "Return ONLY the JSON object. No explanation, no markdown code fences.",
+  );
+
+  return parts.join("\n\n");
+}
+
+export function buildCombinedResponseUserMessage(
+  recentHistory: string,
+  playerHandle: string,
+  context: PromptContext,
+): string {
+  const parts: string[] = [];
+
+  if (context === "group") {
+    parts.push("The following is the recent conversation in #hexxorz. Messages are formatted as <handle> message.");
+  } else {
+    parts.push(`The following is a private DM conversation with "${playerHandle}". Messages are formatted as <handle> message.`);
+  }
+
+  parts.push("");
+
+  if (recentHistory.length > 0) {
+    parts.push(recentHistory);
+    parts.push("");
+  }
+
+  parts.push("Generate each character's response to the latest message.");
+
+  return parts.join("\n");
 }

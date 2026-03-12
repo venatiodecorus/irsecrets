@@ -135,6 +135,21 @@ export function canDM(id: string): boolean {
   return state.trust >= 3;
 }
 
+export interface GameOverInfo {
+  gameOver: boolean;
+  kickedBy?: string;
+}
+
+export function isGameOver(): GameOverInfo {
+  for (const character of characters) {
+    const state = stateMap.get(character.id);
+    if (state && state.irritation >= 10) {
+      return { gameOver: true, kickedBy: character.handle };
+    }
+  }
+  return { gameOver: false };
+}
+
 export interface CharacterDebugInfo {
   handle: string;
   trust: number;
